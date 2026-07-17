@@ -1,0 +1,12 @@
+[project]
+name = "rogal-dorn"
+version = "0.1.0"
+description = "Autonomous Warhammer 40K Rogal Dorn tank powered by a Raspberry Pi Zero 2 W."
+readme = "README.md"
+requires-python = ">=3.13"
+
+dependencies = [
+    "numpy",
+    "pigpio",
+    "sshkeyboard",
+]
