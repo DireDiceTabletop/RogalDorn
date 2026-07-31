@@ -12,7 +12,7 @@ class Camera:
         width: int = 1280,
         height: int = 720,
         frame_rate: int = 30,
-        rotation: int = 90,
+        rotation: int = 270,
     ) -> None:
         if width <= 0 or height <= 0:
             raise ValueError("Camera width and height must be positive.")
