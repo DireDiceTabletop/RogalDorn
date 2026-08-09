@@ -9,21 +9,21 @@ Rogal Dorn Tank Configuration
 LEFT_TRACK = {
     "gpio": 23,
     "stop": 1460,
-    "forward": 1750,
-    "reverse": 1250,
+    "forward": 2000,
+    "reverse": 1000,
 }
 
 RIGHT_TRACK = {
     "gpio": 24,
     "stop": 1460,
-    "forward": 1750,
-    "reverse": 1250,
+    "forward": 2000,
+    "reverse": 1000,
 }
 
 TURRET = {
     "gpio": 25,
-    "stop": 1485,
-    "forward": 1600,
+    "stop": 1500,
+    "forward": 1800,
     "reverse": 1300,
 }
 
@@ -43,7 +43,11 @@ BARREL = {
 # -------------------------------------------------
 
 LASER_GPIO = 17
-HALL_SENSOR_GPIO = 22
+HALL_SENSORS = {
+	"left": 16,
+	"home": 20,
+	"right": 19,
+}
 
 # -------------------------------------------------
 # Turret Limits
