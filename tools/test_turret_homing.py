@@ -48,7 +48,7 @@ def main() -> None:
 
         turret = Turret(
             servo=servo,
-            left_direction=-1,
+            left_direction=TURRET["tank_left_direction"],
             left_limit=left_sensor,
             home_sensor=home_sensor,
             right_limit=right_sensor,

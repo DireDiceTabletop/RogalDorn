@@ -4,8 +4,7 @@ import cv2
 import pigpio
 
 from config import HALL_SENSORS, TURRET
-from control.aiming import AimingController
-from control.turret_aim import apply_aiming_command
+from control.aiming import AimDirection, AimingController
 from hardware.continuous_servo import ContinuousRotationServo
 from hardware.hall_sensor import HallSensor
 from hardware.turret import Turret
@@ -14,38 +13,15 @@ from vision.detector import FaceDetector
 from vision.tracker import TargetTracker
 
 
-# ---------------------------------------------------------
-# Camera
-# ---------------------------------------------------------
-
 WIDTH = 320
 HEIGHT = 180
 CAMERA_ROTATION = 270
 
-# Calibrated optical centre offset.
-CAMERA_X_OFFSET = 52
-
-
-# ---------------------------------------------------------
-# Aiming
-# ---------------------------------------------------------
-
 DEADZONE = 20
-MAX_TRACKING_ERROR = 120
-CONFIRM_FRAMES = 2
-
-
-# ---------------------------------------------------------
-# Homing
-# ---------------------------------------------------------
+TRACKING_SPEED = 0.25
 
 HOMING_SPEED = 0.25
 HOMING_TIMEOUT = 3.0
-
-
-# ---------------------------------------------------------
-# Reporting
-# ---------------------------------------------------------
 
 REPORT_INTERVAL = 0.2
 
@@ -54,7 +30,6 @@ def main() -> None:
     pi = None
     turret = None
     camera = None
-    aiming = None
 
     try:
         # ---------------------------------------------------------
@@ -102,7 +77,7 @@ def main() -> None:
 
         turret = Turret(
             servo=servo,
-            left_direction=TURRET["tank_left_direction"],
+            left_direction=-1,
             left_limit=left_sensor,
             home_sensor=home_sensor,
             right_limit=right_sensor,
@@ -127,12 +102,11 @@ def main() -> None:
 
         aiming = AimingController(
             deadzone=DEADZONE,
-            max_error=MAX_TRACKING_ERROR,
-            confirm_frames=CONFIRM_FRAMES,
+            tracking_speed=TRACKING_SPEED,
         )
 
         # ---------------------------------------------------------
-        # Startup information
+        # Initial status
         # ---------------------------------------------------------
 
         print("Autonomous turret tracking test")
@@ -143,12 +117,10 @@ def main() -> None:
             f"Left limit : "
             f"{'ACTIVE' if turret.at_left_limit else 'clear'}"
         )
-
         print(
             f"Home       : "
             f"{'ACTIVE' if turret.at_home else 'clear'}"
         )
-
         print(
             f"Right limit: "
             f"{'ACTIVE' if turret.at_right_limit else 'clear'}"
@@ -156,65 +128,12 @@ def main() -> None:
 
         print()
         print(
-            f"Camera resolution : "
-            f"{WIDTH}x{HEIGHT}"
+            f"Deadzone      : ±{aiming.deadzone}px"
         )
-
         print(
-            f"Camera rotation   : "
-            f"{CAMERA_ROTATION}"
+            f"Tracking speed: "
+            f"{aiming.tracking_speed:.2f}"
         )
-
-        print(
-            f"Camera X offset   : "
-            f"{CAMERA_X_OFFSET:+d}px"
-        )
-
-        print()
-        print(
-            f"Deadzone          : "
-            f"±{aiming.deadzone}px"
-        )
-
-        print(
-            f"Maximum error     : "
-            f"±{aiming.max_error}px"
-        )
-
-        print(
-            f"Confirm frames    : "
-            f"{aiming.confirm_frames}"
-        )
-
-        print()
-        print(
-            f"Left tracking     : "
-            f"{TURRET['tracking_left_min']:.2f}"
-            f"–{TURRET['tracking_left_max']:.2f}"
-        )
-
-        print(
-            f"Right tracking    : "
-            f"{TURRET['tracking_right_min']:.2f}"
-            f"–{TURRET['tracking_right_max']:.2f}"
-        )
-
-        print()
-        print(
-            f"Servo stop        : "
-            f"{TURRET['stop']} µs"
-        )
-
-        print(
-            f"Servo forward     : "
-            f"{TURRET['forward']} µs"
-        )
-
-        print(
-            f"Servo reverse     : "
-            f"{TURRET['reverse']} µs"
-        )
-
         print()
 
         input(
@@ -245,12 +164,15 @@ def main() -> None:
         print()
 
         # ---------------------------------------------------------
-        # Prepare for face tracking
+        # Prepare for autonomous operation
         # ---------------------------------------------------------
 
+        print("Place your face in front of the camera.")
+        print()
+
         input(
-            "Place your face in view and press Enter "
-            "to begin tracking..."
+            "Press Enter to begin autonomous tracking, "
+            "or Ctrl+C to cancel..."
         )
 
         print()
@@ -258,13 +180,15 @@ def main() -> None:
 
         camera.start()
 
+        # Allow camera controls/exposure to settle.
         time.sleep(2.0)
 
+        # Discard startup frames.
         for _ in range(5):
             camera.capture_array()
 
         # ---------------------------------------------------------
-        # Initial YuNet face acquisition
+        # YuNet acquisition
         # ---------------------------------------------------------
 
         print()
@@ -275,32 +199,23 @@ def main() -> None:
         frame = camera.capture_array()
 
         detect_start = time.perf_counter()
-
         targets = detector.detect(frame)
+        detect_time = time.perf_counter() - detect_start
 
-        detect_time = (
-            time.perf_counter()
-            - detect_start
-        )
-
-        target = target_selector.select_target(
-            targets
-        )
+        target = target_selector.select_target(targets)
 
         if target is None:
-            aiming.reset()
             turret.stop()
 
             print(
                 f"No face detected "
                 f"({detect_time:.2f}s)."
             )
-
+            print("Turret stopped.")
             return
 
         print(
-            f"Face acquired in "
-            f"{detect_time:.2f}s."
+            f"Face acquired in {detect_time:.2f}s"
         )
 
         print(
@@ -312,181 +227,141 @@ def main() -> None:
         )
 
         # ---------------------------------------------------------
-        # Initialise MOSSE
+        # MOSSE initialization
         # ---------------------------------------------------------
 
         tracker = cv2.legacy.TrackerMOSSE_create()
 
+        bounding_box = (
+            target.x,
+            target.y,
+            target.width,
+            target.height,
+        )
+
         tracker.init(
             frame,
-            (
-                target.x,
-                target.y,
-                target.width,
-                target.height,
-            ),
+            bounding_box,
         )
 
         print()
         print("AUTONOMOUS TRACKING ACTIVE")
-        print("--------------------------")
-        print("Move slowly left and right.")
-        print("LEFT/RIGHT are tank-relative.")
         print("Press Ctrl+C to stop.")
         print()
 
         last_report = 0.0
 
         # ---------------------------------------------------------
-        # Tracking loop
+        # Tracking / aiming loop
         # ---------------------------------------------------------
 
         while True:
             loop_start = time.perf_counter()
 
-            # -----------------------------------------------------
-            # Capture frame
-            # -----------------------------------------------------
-
             capture_start = time.perf_counter()
-
             frame = camera.capture_array()
-
             capture_time = (
-                time.perf_counter()
-                - capture_start
+                time.perf_counter() - capture_start
             )
-
-            # -----------------------------------------------------
-            # MOSSE update
-            # -----------------------------------------------------
 
             track_start = time.perf_counter()
-
-            success, box = tracker.update(
-                frame
-            )
-
+            success, box = tracker.update(frame)
             track_time = (
-                time.perf_counter()
-                - track_start
+                time.perf_counter() - track_start
             )
 
             # -----------------------------------------------------
-            # Lost target
+            # Safety: loss of tracking means immediate STOP
             # -----------------------------------------------------
 
             if not success:
-                aiming.reset()
                 turret.stop()
 
                 print()
-                print(
-                    "TRACK LOST -> "
-                    "TURRET STOPPED"
-                )
-
+                print("TRACK LOST -> TURRET STOPPED")
                 break
 
             # -----------------------------------------------------
-            # Target coordinates
+            # Calculate target position
             # -----------------------------------------------------
 
             x, y, width, height = box
 
-            target_centre_x = (
-                x + width / 2
-            )
+            target_centre_x = x + (width / 2)
+            target_centre_y = y + (height / 2)
 
-            target_centre_y = (
-                y + height / 2
-            )
+            frame_height, frame_width = frame.shape[:2]
 
-            frame_height, frame_width = (
-                frame.shape[:2]
-            )
+            frame_centre_x = frame_width / 2
+            frame_centre_y = frame_height / 2
 
-            # Raw target error relative to image centre.
-            raw_error_x = int(
-                target_centre_x
-                - frame_width / 2
-            )
-
-            # Correct the camera's optical centre relative
-            # to the tank's calibrated forward centreline.
-            error_x = (
-                raw_error_x
-                - CAMERA_X_OFFSET
+            error_x = int(
+                target_centre_x - frame_centre_x
             )
 
             error_y = int(
-                target_centre_y
-                - frame_height / 2
+                target_centre_y - frame_centre_y
             )
 
             # -----------------------------------------------------
-            # Logical aiming command
+            # Convert position error into an aiming command
             # -----------------------------------------------------
 
-            command = aiming.calculate(
-                error_x
-            )
+            command = aiming.calculate(error_x)
 
             # -----------------------------------------------------
-            # Physical turret command
+            # Execute command
             #
-            # This maps logical correction strength onto the
-            # independently calibrated left/right speed ranges.
+            # Hall-limit protection remains inside Turret.
             # -----------------------------------------------------
 
-            physical_speed = apply_aiming_command(
-                turret=turret,
-                command=command,
-            )
+            if command.direction is AimDirection.LEFT:
+                turret.rotate_left(
+                    command.speed
+                )
+
+            elif command.direction is AimDirection.RIGHT:
+                turret.rotate_right(
+                    command.speed
+                )
+
+            else:
+                turret.stop()
 
             # -----------------------------------------------------
             # Reporting
+            #
+            # Only the printing is rate-limited.
+            # Turret control above happens on every frame.
             # -----------------------------------------------------
 
             now = time.perf_counter()
 
-            if (
-                now - last_report
-                < REPORT_INTERVAL
-            ):
-                continue
+            if now - last_report >= REPORT_INTERVAL:
+                last_report = now
 
-            last_report = now
+                loop_time = (
+                    time.perf_counter() - loop_start
+                )
 
-            loop_time = (
-                time.perf_counter()
-                - loop_start
-            )
+                if loop_time > 0:
+                    fps = 1.0 / loop_time
+                else:
+                    fps = 0.0
 
-            fps = (
-                1.0 / loop_time
-                if loop_time > 0
-                else 0.0
-            )
+                capture_ms = capture_time * 1000
+                track_ms = track_time * 1000
 
-            print(
-                f"RAW={raw_error_x:+4d}  "
-                f"X={error_x:+4d}  "
-                f"Y={error_y:+4d}  "
-                f"AIM="
-                f"{command.direction.value.upper():7}  "
-                f"STRENGTH="
-                f"{command.strength:.2f}  "
-                f"SERVO="
-                f"{physical_speed:.2f}  "
-                f"ACTIVE="
-                f"{aiming.active_direction.value.upper():7}  "
-                f"FPS={fps:5.1f}  "
-                f"capture="
-                f"{capture_time * 1000:5.1f}ms  "
-                f"track="
-                f"{track_time * 1000:5.1f}ms"
-            )
+                print(
+                    f"X={error_x:+4d}  "
+                    f"Y={error_y:+4d}  "
+                    f"AIM="
+                    f"{command.direction.value.upper():7}  "
+                    f"SPEED={command.speed:.2f}  "
+                    f"FPS={fps:5.1f}  "
+                    f"capture={capture_ms:5.1f}ms  "
+                    f"track={track_ms:5.1f}ms"
+                )
 
     except KeyboardInterrupt:
         print()
@@ -494,17 +369,12 @@ def main() -> None:
 
     except (RuntimeError, TimeoutError) as error:
         print()
-        print(
-            f"TEST FAILED: {error}"
-        )
+        print(f"TEST FAILED: {error}")
 
     finally:
         # ---------------------------------------------------------
         # Fail-safe shutdown
         # ---------------------------------------------------------
-
-        if aiming is not None:
-            aiming.reset()
 
         if turret is not None:
             turret.stop()

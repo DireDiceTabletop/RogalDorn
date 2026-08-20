@@ -24,7 +24,25 @@ TURRET = {
     "gpio": 25,
     "stop": 1500,
     "forward": 1800,
-    "reverse": 1300,
+    "reverse": 1200,
+    # Physical direction convention:
+    #
+    # LEFT and RIGHT are always from the tank's perspective
+    # while driving forwards.
+    #
+    # We will calibrate this value using the physical
+    # direction test.
+    "tank_left_direction": 1,
+
+    # Physical tracking-speed calibration.
+    #
+    # These values represent approximately equivalent
+    # usable movement ranges in each physical direction.
+    "tracking_left_min": 0.05,
+    "tracking_left_max": 0.10,
+
+    "tracking_right_min": 0.17,
+    "tracking_right_max": 0.21,
 }
 
 # -------------------------------------------------
@@ -44,9 +62,9 @@ BARREL = {
 
 LASER_GPIO = 17
 HALL_SENSORS = {
-	"left": 16,
+	"left": 19,
 	"home": 20,
-	"right": 19,
+	"right": 16,
 }
 
 # -------------------------------------------------

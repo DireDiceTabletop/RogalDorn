@@ -9,6 +9,13 @@ class Turret:
     """
     Controls horizontal turret rotation.
 
+    Direction convention:
+
+        LEFT  = tank's physical left when facing forwards
+        RIGHT = tank's physical right when facing forwards
+
+    All callers must use tank-relative directions.
+
     The turret owns horizontal movement, Hall-effect limits,
     and automatic homing.
     """
@@ -92,7 +99,7 @@ class Turret:
         speed: float = 1.0,
     ) -> bool:
         """
-        Rotate left.
+        Rotate left from the tank's forward perspective
 
         Return False when movement is blocked by the left limit.
         """
@@ -121,7 +128,7 @@ class Turret:
         speed: float = 1.0,
     ) -> bool:
         """
-        Rotate right.
+        Rotate right from the tank's forward direction.
 
         Return False when movement is blocked by the right limit.
         """
