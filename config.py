@@ -4,17 +4,17 @@
 
 LEFT_TRACK = {
     "gpio": 23,
-    "stop": 1460,
-    "forward": 1750,
-    "reverse": 1250,
+    "stop": 1440,
+    "forward": 1300,
+    "reverse": 1600,
 }
 
 
 RIGHT_TRACK = {
     "gpio": 24,
-    "stop": 1460,
-    "forward": 1750,
-    "reverse": 1250,
+    "stop": 1450,
+    "forward": 1600,
+    "reverse": 1300,
 }
 
 
@@ -27,8 +27,8 @@ TURRET = {
 
     # Continuous-rotation servo pulse calibration.
     "stop": 1500,
-    "forward": 1800,
-    "reverse": 1200,
+    "forward": 1700,
+    "reverse": 1300,
 
     # Direction convention:
     #
